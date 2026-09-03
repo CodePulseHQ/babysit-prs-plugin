@@ -1,0 +1,30 @@
+name: Validate plugin
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Validate plugin/marketplace manifests
+        run: claude plugin validate .
+
+      - name: Check Python syntax
+        run: |
+          python3 -m py_compile skills/babysit-prs/*.py hooks/*.py
+
+      - name: Check JSON syntax
+        run: |
+          find . -name '*.json' -not -path './.git/*' -print0 \
+            | xargs -0 -n1 python3 -c 'import json, sys; json.load(open(sys.argv[1]))'

@@ -39,6 +39,13 @@ claude plugin marketplace update babysit-prs-plugin
 claude plugin update babysit-prs@babysit-prs-plugin
 ```
 
+### Uninstall
+
+```bash
+claude plugin uninstall babysit-prs@babysit-prs-plugin
+claude plugin marketplace remove babysit-prs-plugin
+```
+
 ## Usage
 
 ```bash
@@ -62,3 +69,13 @@ Bundles a `UserPromptSubmit` hook that renames the session to `<repo>#<pr>` (or 
 
 - [`gh`](https://cli.github.com/) CLI, authenticated
 - `python3` on `PATH`
+
+## Troubleshooting
+
+**Session doesn't get renamed / skill can't fetch PR data.** The most common cause is `gh` not being authenticated on that machine — check with `gh auth status`. The naming hook fails silently (no title change, no error shown) when `gh` can't resolve the current PR; the skill itself will surface a clearer error from `gh pr view` when it can't read PR state.
+
+**Plugin shows "failed to load" after install.** Run `claude --debug` to see the specific load error, or check `/plugin` → **Installed** → the plugin's entry for the reported reason. Re-run `claude plugin validate .` against a local checkout to catch manifest issues before they reach a machine.
+
+## License
+
+[MIT](LICENSE)
