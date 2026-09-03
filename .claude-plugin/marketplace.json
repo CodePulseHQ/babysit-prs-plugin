@@ -1,5 +1,6 @@
 {
   "name": "babysit-prs-plugin",
+  "description": "Marketplace for the babysit-prs Claude Code plugin: autonomous PR review-comment and CI babysitting, with session auto-naming.",
   "owner": {
     "name": "CodePulseHQ"
   },
