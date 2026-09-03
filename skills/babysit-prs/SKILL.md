@@ -28,7 +28,7 @@ gh pr view --json number -q .number
 # default branch (main/master/develop — resolved dynamically, never
 # hardcoded), sorted oldest-first by PR number. One helper call instead of a
 # separate `gh repo view` + `gh pr list` + jq pipeline.
-SKILL_DIR=~/.claude/skills/babysit-prs
+SKILL_DIR=${CLAUDE_SKILL_DIR}
 python3 "$SKILL_DIR/open_comments.py" --list --json
 ```
 
@@ -100,10 +100,10 @@ When detected: leave a single comment summarising your position on all outstandi
 
 The helper (`open_comments.py`, in this skill's directory) does exactly that — paginates ALL review threads + issue comments, filters to open/unanswered, re-orders by most-recent activity, and caps the output:
 
-`open_comments.py` lives in this skill's base directory (shown to you as "Base directory for this skill" when the skill is invoked, e.g. `~/.claude/skills/babysit-prs/open_comments.py`). Run it from the repo you're babysitting so `gh repo view` auto-detects the right repo:
+`open_comments.py` lives in this skill's own directory — reference it as `${CLAUDE_SKILL_DIR}/open_comments.py`, never a hardcoded path. `${CLAUDE_SKILL_DIR}` is substituted automatically wherever it appears in this file, and resolves correctly whether this skill is installed loose under `~/.claude/skills/` or via a plugin (where it lives somewhere under `~/.claude/plugins/cache/`) — **never** fall back to searching the filesystem (e.g. `find /`) to locate it; if `${CLAUDE_SKILL_DIR}` doesn't resolve to a real directory, that's a bug in the skill or its installation, not something to work around with a filesystem-wide search. Run it from the repo you're babysitting so `gh repo view` auto-detects the right repo:
 
 ```bash
-SKILL_DIR=~/.claude/skills/babysit-prs   # = this skill's base directory
+SKILL_DIR=${CLAUDE_SKILL_DIR}   # = this skill's base directory
 
 # Default: open (unresolved) review threads + recent issue comments, newest-first,
 # capped at 30. Auto-detects repo (gh repo view) and your login (gh api user).
@@ -125,7 +125,7 @@ Each review thread row gives you everything you need to act:
 **Resolving threads — use the bundled helper, not a shell loop.** `resolve_threads.py` (same directory as `open_comments.py`) replies-then-resolves or bulk-resolves in ONE Bash call. This matters beyond convenience: in a worktree-isolated session, a multi-command shell loop over several `gh api graphql` calls gets refused outright ("too complex to verify that it stays inside the worktree") — one Python process making the same calls does not trip that check.
 
 ```bash
-SKILL_DIR=~/.claude/skills/babysit-prs
+SKILL_DIR=${CLAUDE_SKILL_DIR}
 
 # Resolve N threads you already replied to earlier (no new reply):
 python3 "$SKILL_DIR/resolve_threads.py" --resolve <threadId1> <threadId2> <threadId3>
