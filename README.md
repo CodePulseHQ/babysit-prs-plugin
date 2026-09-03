@@ -4,10 +4,20 @@ A Claude Code plugin: continuously monitor GitHub PRs for review comments and CI
 
 ## Install
 
+Run these two commands on each machine you use Claude Code from:
+
 ```bash
 claude plugin marketplace add CodePulseHQ/babysit-prs-plugin
 claude plugin install babysit-prs@babysit-prs-plugin
 ```
+
+This is one-time per machine — the skill, its helper scripts, and the session-naming hook all install together, so there's nothing else to copy around. To pick up updates later, run:
+
+```bash
+claude plugin marketplace update babysit-prs-plugin
+```
+
+The plugin is pure Python (stdlib only) plus `git`/`gh` shell-outs, invoked as `python3 <script>` rather than executed directly, so it installs and runs identically on WSL, native Windows, macOS (Intel or Apple Silicon), and Linux — no platform-specific setup beyond the requirements below.
 
 ## Usage
 
