@@ -11,14 +11,33 @@ import sys
 
 
 def repo_name(cwd):
+    """The actual repo name, not the local directory name - a worktree
+    (e.g. Claude Code's isolated worktrees) sits in a randomly-named
+    directory, and even a non-worktree clone may be renamed locally."""
     try:
-        toplevel = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+        result = subprocess.run(
+            ["gh", "repo", "view", "--json", "name", "-q", ".name"],
+            cwd=cwd, capture_output=True, text=True, timeout=10,
+        )
+        name = result.stdout.strip()
+        if name:
+            return name
+    except Exception:
+        pass
+
+    # Fall back to the git repo's own directory name via the *common*
+    # git dir, which - unlike --show-toplevel - resolves through a
+    # worktree back to the main repo, not the worktree's own directory.
+    try:
+        common_dir = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"],
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
     except Exception:
         return None
-    return os.path.basename(toplevel) if toplevel else None
+    if not common_dir:
+        return None
+    return os.path.basename(os.path.dirname(common_dir))
 
 
 def current_pr_number(cwd):
