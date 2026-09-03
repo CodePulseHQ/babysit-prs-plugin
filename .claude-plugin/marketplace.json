@@ -1,0 +1,13 @@
+{
+  "name": "babysit-prs-plugin",
+  "owner": {
+    "name": "CodePulseHQ"
+  },
+  "plugins": [
+    {
+      "name": "babysit-prs",
+      "source": "./",
+      "description": "Continuously monitor GitHub PRs for review comments and CI failures, auto-addressing feedback and fixing builds. Includes a hook that names the session \"repo#pr\" (or \"repo#ALL\") while babysitting."
+    }
+  ]
+}
