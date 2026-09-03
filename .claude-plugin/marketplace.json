@@ -8,7 +8,19 @@
     {
       "name": "babysit-prs",
       "source": "./",
-      "description": "Continuously monitor GitHub PRs for review comments and CI failures, auto-addressing feedback and fixing builds. Includes a hook that names the session \"repo#pr\" (or \"repo#ALL\") while babysitting."
+      "description": "Continuously monitor GitHub PRs for review comments and CI failures, auto-addressing feedback and fixing builds. Includes a hook that names the session \"repo#pr\" (or \"repo#ALL\") while babysitting.",
+      "homepage": "https://codepulse.review",
+      "repository": "https://github.com/CodePulseHQ/babysit-prs-plugin",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "pull-requests",
+        "code-review",
+        "github",
+        "ci-cd",
+        "automation",
+        "loop"
+      ]
     }
   ]
 }

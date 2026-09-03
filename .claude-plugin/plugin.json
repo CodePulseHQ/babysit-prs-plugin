@@ -5,5 +5,16 @@
   "author": {
     "name": "CodePulseHQ"
   },
+  "homepage": "https://codepulse.review",
+  "repository": "https://github.com/CodePulseHQ/babysit-prs-plugin",
+  "license": "MIT",
+  "keywords": [
+    "pull-requests",
+    "code-review",
+    "github",
+    "ci-cd",
+    "automation",
+    "loop"
+  ],
   "skills": "./skills/"
 }

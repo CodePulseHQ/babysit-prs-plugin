@@ -1,5 +1,9 @@
 # babysit-prs
 
+[![Validate plugin](https://github.com/CodePulseHQ/babysit-prs-plugin/actions/workflows/validate.yml/badge.svg)](https://github.com/CodePulseHQ/babysit-prs-plugin/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Install via Claude Code](https://img.shields.io/badge/claude%20code-plugin-5A32FB)](#install)
+
 A Claude Code plugin: continuously monitor GitHub PRs for review comments and CI failures, automatically addressing feedback and fixing builds. Designed to run with `/loop`.
 
 ## Install
@@ -60,6 +64,12 @@ claude plugin marketplace remove babysit-prs-plugin
 ```
 
 See `skills/babysit-prs/SKILL.md` for the full behavior.
+
+## Pairs well with CodePulse
+
+[**CodePulse**](https://codepulse.review) is an AI code-review bot that reviews every PR across correctness, security, resilience, and standards, then posts severity-tagged findings straight to GitHub. `babysit-prs` treats CodePulse as a first-class reviewer: it reads its review summaries (not just inline threads), verifies its findings before acting on them, and won't consider a PR done while CodePulse still has an unaddressed should-fix/must-fix item outstanding.
+
+Run CodePulse on your repo to get thorough, always-on review coverage, then point `/babysit-prs` at the resulting PRs to close the loop — feedback in, fixes and replies out, automatically.
 
 ## Session naming
 
