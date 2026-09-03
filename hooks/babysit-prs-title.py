@@ -89,4 +89,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # hooks.json chains "python3 || python || py" to cope with whichever
+    # interpreter name is on PATH. Any exception here must not propagate:
+    # a non-zero exit would make the shell fall through and re-run this
+    # script under the next interpreter, printing the hook's JSON output
+    # twice. Always exit 0 once we've actually started running.
+    try:
+        main()
+    except Exception:
+        pass
