@@ -1,6 +1,6 @@
 ---
 name: babysit-prs
-description: Use when the user wants to continuously monitor one or more PRs for review comments and CI failures, automatically addressing feedback and fixing builds. Accepts a PR number, "all" for all your open, non-approved PRs targeting the repo's main branch (processed oldest-first), or defaults to the current branch's PR. Designed to be run with /loop.
+description: Use when the user wants to continuously monitor one or more PRs for review comments and CI failures, automatically addressing feedback and fixing builds. Accepts a PR number, "all" for all your open, non-draft, non-approved PRs targeting the repo's main branch (processed oldest-first), or defaults to the current branch's PR. Designed to be run with /loop.
 ---
 
 # Babysit PRs
@@ -11,7 +11,7 @@ Continuously monitor GitHub PRs for new review comments and CI failures. Automat
 
 - No args: monitor the PR for the current branch
 - PR number (e.g. `287`): monitor that specific PR (targets any base branch — the base-branch restriction below only applies to `all` mode)
-- `all`: monitor all your open, non-approved PRs that target the repo's main branch (main/master/develop — whatever `gh repo view` reports as the default branch), processed oldest PR number first. PRs targeting any other branch (e.g. a feature or staging branch) are skipped unless babysat explicitly by number.
+- `all`: monitor all your open, non-draft, non-approved PRs that target the repo's main branch (main/master/develop — whatever `gh repo view` reports as the default branch), processed oldest PR number first. PRs targeting any other branch (e.g. a feature or staging branch) are skipped unless babysat explicitly by number. Drafts are skipped too — there's nothing to babysit on a PR that isn't ready for review yet — but babysitting one explicitly by number still works.
 
 ## Mode Detection
 
@@ -24,10 +24,10 @@ gh pr view --json number -q .number
 # feature branch if given its number directly)
 
 # "all" → use the bundled helper's --list mode: fetches open PRs authored by
-# you, filters to NOT approved and targeting the repo's actual default branch
-# (main/master/develop — resolved dynamically, never hardcoded), sorted
-# oldest-first by PR number. One helper call instead of a separate
-# `gh repo view` + `gh pr list` + jq pipeline.
+# you, filters to non-draft, NOT approved, and targeting the repo's actual
+# default branch (main/master/develop — resolved dynamically, never
+# hardcoded), sorted oldest-first by PR number. One helper call instead of a
+# separate `gh repo view` + `gh pr list` + jq pipeline.
 SKILL_DIR=~/.claude/skills/babysit-prs
 python3 "$SKILL_DIR/open_comments.py" --list --json
 ```
@@ -269,9 +269,9 @@ cat .claude/pr-review-conventions.md 2>/dev/null
 ## Multi-PR Mode Specifics
 
 When running with `all`:
-- At the start of **every** cycle, re-run `open_comments.py --list --json` to refresh the list of open, non-approved PRs targeting the repo's default branch, sorted oldest-first by PR number (new PRs may have appeared, others may have been approved or had their base branch changed). This list — not memory of what you processed last cycle — is what defines "all PRs currently being monitored" for this cycle.
+- At the start of **every** cycle, re-run `open_comments.py --list --json` to refresh the list of open, non-draft, non-approved PRs targeting the repo's default branch, sorted oldest-first by PR number (new PRs may have appeared, others may have been approved, moved out of draft, moved into draft, or had their base branch changed). This list — not memory of what you processed last cycle — is what defines "all PRs currently being monitored" for this cycle. A PR converted to draft mid-loop simply drops out of the next cycle's list on its own; there's no separate exit condition to handle for it.
 - Process **every** PR in that freshly-fetched list, independently, in oldest-first order, before the cycle ends. Do not treat finishing one PR (including hitting its exit condition) as reason to end the cycle or the loop early — move on to the next PR in the list.
-- **The loop-exit check is the list itself, not manual bookkeeping**: only exit the loop entirely once a freshly-fetched `open_comments.py --list --json` comes back empty (no open, non-approved PRs targeting the default branch remain). If the list still has entries — even just one — keep looping and process it/them next cycle. Never exit the loop because a single PR in this cycle hit approved/merged/closed while the list still contains others.
+- **The loop-exit check is the list itself, not manual bookkeeping**: only exit the loop entirely once a freshly-fetched `open_comments.py --list --json` comes back empty (no open, non-draft, non-approved PRs targeting the default branch remain). If the list still has entries — even just one — keep looping and process it/them next cycle. Never exit the loop because a single PR in this cycle hit approved/merged/closed while the list still contains others.
 - Check out each PR's branch before working on it, then return to the original branch
 
 ```bash

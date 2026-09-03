@@ -22,7 +22,7 @@ USAGE
                    [--json]       # raw JSON (default: human-readable summary)
 
   open_comments.py --list [--repo owner/name] [--me <login>] [--json]
-                   # "all" mode PR discovery: your open, non-approved PRs
+                   # "all" mode PR discovery: your open, non-draft, non-approved PRs
                    # targeting the repo's default branch (main/master/develop),
                    # oldest PR number first. One gh+jq round trip instead of two.
 
@@ -80,17 +80,25 @@ def detect_me():
 
 
 def list_babysittable_prs(repo, me):
-    """'all' mode PR discovery: open, non-approved, targeting the default
-    branch, oldest number first. Mirrors the filter/sort babysit-prs applies
-    for `all` mode, in one gh call instead of two plus a jq pipeline."""
+    """'all' mode PR discovery: open, non-draft, non-approved, targeting the
+    default branch, oldest number first. Mirrors the filter/sort babysit-prs
+    applies for `all` mode, in one gh call instead of two plus a jq pipeline.
+
+    Drafts are excluded: a draft isn't ready for review yet, so there's
+    nothing to babysit - reviewers won't comment and CI is often not even
+    required to pass. Explicit `/babysit-prs <number>` still works on a draft
+    if you ask for it by number; only `all` mode's auto-discovery skips them.
+    """
     default_branch = detect_default_branch()
     prs = json.loads(gh([
         "pr", "list", "--repo", repo, "--author", me, "--state", "open",
-        "--json", "number,title,reviewDecision,baseRefName,url",
+        "--json", "number,title,reviewDecision,baseRefName,url,isDraft",
     ]))
     out = [
         p for p in prs
-        if p.get("reviewDecision") != "APPROVED" and p.get("baseRefName") == default_branch
+        if not p.get("isDraft")
+        and p.get("reviewDecision") != "APPROVED"
+        and p.get("baseRefName") == default_branch
     ]
     out.sort(key=lambda p: p["number"])
     return default_branch, out
@@ -306,7 +314,7 @@ def main():
             }, indent=2))
         else:
             print(f"repo={repo} me={me} defaultBranch={default_branch}")
-            print(f"{len(prs)} open, non-approved PR(s) targeting {default_branch} "
+            print(f"{len(prs)} open, non-draft, non-approved PR(s) targeting {default_branch} "
                   "(oldest first):")
             for p in prs:
                 print(f"  #{p['number']}  {p.get('title', '')}")
