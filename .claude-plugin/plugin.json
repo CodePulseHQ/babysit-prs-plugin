@@ -1,7 +1,6 @@
 {
   "name": "babysit-prs",
   "displayName": "Babysit PRs",
-  "version": "1.0.0",
   "description": "Continuously monitor GitHub PRs for review comments and CI failures, auto-addressing feedback and fixing builds. Designed to run with /loop.",
   "author": {
     "name": "CodePulseHQ"
