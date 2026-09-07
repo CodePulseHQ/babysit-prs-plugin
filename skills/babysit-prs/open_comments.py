@@ -52,6 +52,7 @@ It ALSO reports PR state in the same run (saves a separate `gh pr view` call):
 """
 import argparse
 import json
+import re
 import subprocess
 import sys
 
@@ -66,6 +67,25 @@ def gh(args):
 
 
 def detect_repo():
+    """Resolve owner/repo for the CWD's git checkout.
+
+    Prefer the `origin` remote's URL directly. `gh repo view` resolves the
+    "current" repo from ALL configured remotes, and when a fork also has an
+    `upstream` remote pointing at the parent repo, gh can pick `upstream`
+    instead of `origin` - silently operating on the wrong repo (wrong PR
+    numbers, wrong issue/comment targets). Reading `origin` explicitly avoids
+    that ambiguity; only fall back to `gh repo view` if there's no `origin`
+    remote or it isn't a GitHub URL.
+    """
+    p = subprocess.run(
+        ["git", "remote", "get-url", "origin"], capture_output=True, text=True
+    )
+    if p.returncode == 0:
+        m = re.search(
+            r"github\.com[:/]([^/]+)/(.+?)(?:\.git)?/?$", p.stdout.strip()
+        )
+        if m:
+            return f"{m.group(1)}/{m.group(2)}"
     return json.loads(gh(["repo", "view", "--json", "nameWithOwner"]))["nameWithOwner"]
 
 
