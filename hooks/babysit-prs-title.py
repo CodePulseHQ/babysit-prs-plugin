@@ -57,7 +57,10 @@ def main():
     prompt = data.get("prompt", "")
     cwd = data.get("cwd") or os.getcwd()
 
-    match = re.search(r"/babysit-prs(?:\s+(\S+))?", prompt)
+    # Plugin-installed skills are invoked as "/babysit-prs:babysit-prs" (the
+    # plugin:skill form), not just "/babysit-prs" - tolerate the qualifier
+    # before looking for the actual argument.
+    match = re.search(r"/babysit-prs(?::[\w.-]+)?(?:\s+(\S+))?", prompt)
     if not match:
         return
 
