@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""Fake `gh` for tests: answers the two calls babysit-prs-title.py makes,
+using values the test supplies via FAKE_GH_REPO_NAME / FAKE_GH_PR_NUMBER."""
+import os
+import sys
+
+args = sys.argv[1:]
+if args[:2] == ["repo", "view"]:
+    print(os.environ.get("FAKE_GH_REPO_NAME", ""))
+elif args[:2] == ["pr", "view"]:
+    print(os.environ.get("FAKE_GH_PR_NUMBER", ""))

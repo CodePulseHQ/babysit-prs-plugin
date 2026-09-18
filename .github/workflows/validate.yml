@@ -28,3 +28,6 @@ jobs:
         run: |
           find . -name '*.json' -not -path './.git/*' -print0 \
             | xargs -0 -n1 python3 -c 'import json, sys; json.load(open(sys.argv[1]))'
+
+      - name: Run hook tests
+        run: python3 -m unittest hooks/tests/test_babysit_prs_title.py -v
