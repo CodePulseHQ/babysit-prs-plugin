@@ -66,22 +66,28 @@ def main():
 
     arg = match.group(1)
 
-    repo = repo_name(cwd)
-    if not repo:
-        return
-
-    if arg is None:
-        pr = current_pr_number(cwd)
-        if not pr:
-            return
-        label = pr
-    elif arg.lower() == "all":
-        label = "ALL"
-    elif arg.isdigit():
-        label = arg
+    # A full GitHub PR URL (e.g. https://github.com/owner/repo/pull/287)
+    # names its own repo and PR number directly - no need to shell out.
+    url_match = arg and re.match(r"https://github\.com/[^/\s]+/([^/\s]+)/pull/(\d+)/?$", arg)
+    if url_match:
+        repo, label = url_match.group(1), url_match.group(2)
     else:
-        # unrecognized argument shape - don't guess
-        return
+        repo = repo_name(cwd)
+        if not repo:
+            return
+
+        if arg is None:
+            pr = current_pr_number(cwd)
+            if not pr:
+                return
+            label = pr
+        elif arg.lower() == "all":
+            label = "ALL"
+        elif arg.isdigit():
+            label = arg
+        else:
+            # unrecognized argument shape - don't guess
+            return
 
     print(json.dumps({
         "hookSpecificOutput": {
