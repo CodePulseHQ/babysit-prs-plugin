@@ -124,14 +124,20 @@ def list_babysittable_prs(repo, me):
     return default_branch, out
 
 
-def fetch_pr_checks(pr):
+def fetch_pr_checks(repo, pr):
     """CI check status. `gh pr checks` exits non-zero when checks are failing
     (1) or still pending (8) - that's normal signal, not a call failure, so
     this does NOT use the gh() helper (which sys.exit()s on non-zero). Only
     an empty/unparseable stdout (no checks configured, transient gh error)
-    is treated as "no checks"."""
+    is treated as "no checks".
+
+    Takes repo explicitly and passes --repo: without it, `gh pr checks`
+    resolves the repo itself from the CWD's git remotes the same way `gh
+    repo view` does, which silently picks the wrong PR number (and thus the
+    wrong checks) in exactly the fork-with-upstream setups detect_repo() is
+    designed to avoid for every other call in this script."""
     p = subprocess.run(
-        ["gh", "pr", "checks", str(pr), "--json", "name,state,bucket,link"],
+        ["gh", "pr", "checks", str(pr), "--repo", repo, "--json", "name,state,bucket,link"],
         capture_output=True, text=True,
     )
     out = p.stdout.strip()
@@ -143,12 +149,18 @@ def fetch_pr_checks(pr):
         return []
 
 
-def fetch_pr_state(pr):
+def fetch_pr_state(repo, pr):
     """One `gh pr view` (+ `gh pr checks`) covering every per-cycle
     exit-condition signal, INCLUDING CI - folded in here so a cycle can never
-    skip checking CI just because there are no new comments."""
+    skip checking CI just because there are no new comments.
+
+    Takes repo explicitly and passes --repo, for the same reason
+    fetch_pr_checks does: left to its own repo detection, `gh pr view <pr>`
+    can resolve against `upstream` instead of the fork, reporting a
+    different PR's state entirely (wrong review decision, wrong mergeable/
+    mergeStateStatus, even CLOSED when the real PR is open)."""
     s = json.loads(gh([
-        "pr", "view", str(pr), "--json",
+        "pr", "view", str(pr), "--repo", repo, "--json",
         "reviewDecision,state,mergeable,mergeStateStatus,baseRefName,isDraft",
     ]))
     # BEHIND  = branch is behind base (needs rebase/update to merge)
@@ -160,7 +172,7 @@ def fetch_pr_state(pr):
     )
     s["approved"] = s.get("reviewDecision") == "APPROVED"
 
-    checks = fetch_pr_checks(pr)
+    checks = fetch_pr_checks(repo, pr)
     s["checks"] = checks
     s["failingChecks"] = [c["name"] for c in checks if c.get("bucket") == "fail"]
     s["pendingChecks"] = [c["name"] for c in checks if c.get("bucket") == "pending"]
@@ -345,7 +357,7 @@ def main():
 
     owner, name = repo.split("/", 1)
 
-    state = fetch_pr_state(a.pr)
+    state = fetch_pr_state(repo, a.pr)
     threads = [normalize_thread(n, me) for n in fetch_review_threads(owner, name, a.pr)]
     total = len(threads)
     if not a.all:
