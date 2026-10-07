@@ -43,8 +43,14 @@ import subprocess
 import sys
 
 
+# Windows defaults to a legacy codepage (e.g. cp1252); force UTF-8 so emoji in
+# comments don't crash stdin/stdout handling.
+for _s in (sys.stdin, sys.stdout, sys.stderr):
+    _s.reconfigure(encoding="utf-8", errors="replace")
+
+
 def gh(args):
-    p = subprocess.run(["gh", *args], capture_output=True, text=True)
+    p = subprocess.run(["gh", *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
         sys.stderr.write(p.stderr)
         sys.exit(p.returncode)
@@ -105,7 +111,7 @@ def main():
             ap.error("--reply-resolve requires --repo and --pr")
 
         if a.batch:
-            items = json.loads(open(a.batch).read())
+            items = json.load(open(a.batch, encoding="utf-8"))
         elif a.in_reply_to and a.thread and a.body:
             items = [{"replyToId": a.in_reply_to, "threadId": a.thread, "body": a.body}]
         else:

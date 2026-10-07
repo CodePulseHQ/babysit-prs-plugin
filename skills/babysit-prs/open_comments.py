@@ -57,9 +57,15 @@ import subprocess
 import sys
 
 
+# Windows defaults to a legacy codepage (e.g. cp1252); force UTF-8 so emoji in
+# comments don't crash stdin/stdout handling.
+for _s in (sys.stdin, sys.stdout, sys.stderr):
+    _s.reconfigure(encoding="utf-8", errors="replace")
+
+
 def gh(args):
     """Run a gh command, return stdout, exit on failure."""
-    p = subprocess.run(["gh", *args], capture_output=True, text=True)
+    p = subprocess.run(["gh", *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
         sys.stderr.write(p.stderr)
         sys.exit(p.returncode)
@@ -78,7 +84,7 @@ def detect_repo():
     remote or it isn't a GitHub URL.
     """
     p = subprocess.run(
-        ["git", "remote", "get-url", "origin"], capture_output=True, text=True
+        ["git", "remote", "get-url", "origin"], capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     if p.returncode == 0:
         m = re.search(
@@ -138,7 +144,7 @@ def fetch_pr_checks(repo, pr):
     designed to avoid for every other call in this script."""
     p = subprocess.run(
         ["gh", "pr", "checks", str(pr), "--repo", repo, "--json", "name,state,bucket,link"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     out = p.stdout.strip()
     if not out:

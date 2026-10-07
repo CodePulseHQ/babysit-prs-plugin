@@ -10,6 +10,12 @@ import subprocess
 import sys
 
 
+# Windows defaults to a legacy codepage (e.g. cp1252); force UTF-8 so emoji in
+# comments don't crash stdin/stdout handling.
+for _s in (sys.stdin, sys.stdout, sys.stderr):
+    _s.reconfigure(encoding="utf-8", errors="replace")
+
+
 def repo_name(cwd):
     """The actual repo name, not the local directory name - a worktree
     (e.g. Claude Code's isolated worktrees) sits in a randomly-named
@@ -17,7 +23,7 @@ def repo_name(cwd):
     try:
         result = subprocess.run(
             ["gh", "repo", "view", "--json", "name", "-q", ".name"],
-            cwd=cwd, capture_output=True, text=True, timeout=10,
+            cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
         name = result.stdout.strip()
         if name:
@@ -31,7 +37,7 @@ def repo_name(cwd):
     try:
         common_dir = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
         ).stdout.strip()
     except Exception:
         return None
@@ -44,7 +50,7 @@ def current_pr_number(cwd):
     try:
         result = subprocess.run(
             ["gh", "pr", "view", "--json", "number", "-q", ".number"],
-            cwd=cwd, capture_output=True, text=True, timeout=10,
+            cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
     except Exception:
         return None
