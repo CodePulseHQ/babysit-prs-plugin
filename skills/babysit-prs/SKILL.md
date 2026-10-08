@@ -171,11 +171,12 @@ gh pr checks $PR --json name,state,bucket,link
    - Behavior claim ("X throws", "X is nil here", "X is called twice") → a small repro, or trace the call path by reading the actual code.
    - Check whether this exact finding (or its underlying reasoning) was already raised and addressed/declined in a prior cycle — bots repeat themselves across rounds; don't re-litigate a settled point, cite the prior commit/reply instead.
 3. Classify the comment (human or bot, post-verification) into one bucket, and act accordingly:
-   - **Net-new, legit** → make the fix, stage it (do not commit/push yet — see step 4b).
+   - **Net-new, legit** → make the **smallest change that closes the finding**, reusing what already exists, and stage it (do not commit/push yet — see step 4b). Don't add new counters, claims, retries, or stored fields unless there's no way around it — new state is the most common source of follow-up findings. If the fix genuinely needs new state or mechanism, treat that as a step 4a signal rather than bolting it on.
    - **Already addressed** in a prior commit on this PR → reply citing that commit SHA; no code change.
    - **Factually incorrect** (verification in step 2 contradicts the claim) → reply with the verification evidence as justification; no code change.
    - **Already declined in a prior round**, same reasoning still holds → reply citing the prior decision/SHA; no code change. This is also a looping signal — see step 1's looping detection.
    - **Cosmetic / non-blocking** → reply with a one-line rationale for not changing it; no code change.
+   - **Theoretical, rare, low-impact edge case** → a clear reply is often better than more code (and more code means more surface for the next finding). The reply must still carry concrete justification — the impact, how unlikely it is, and a repro/grep/citation — per the bot-gatekeeper rule above. **Never use this bucket for security, data-loss, or compliance findings**; those are fixed if bounded, or go to step 4a if not.
    - **Scope creep / out of scope for this PR** → reply acknowledging the point and noting where it'll be tracked (a follow-up ticket/issue) instead of expanding this PR's diff to cover it. **Do not let reviewer suggestions grow the PR's scope** — a should-fix item that is a genuinely different concern from the PR's stated purpose gets deferred, not absorbed, even if it's valid.
    - **Structural / invariant-breaking finding** → a should-fix that isn't "wrong code" but "this change breaks a guarantee elsewhere in the system" (a compliance/privacy promise, an API contract, an SLA, another subsystem's invariant). If closing the gap is a small, bounded change using an existing pattern, treat it as a normal fix. If it isn't, see step 4a below — do not design new architecture live inside this PR.
 4. **Only resolve threads where the most recent comment is from you (AI-authored).** Never resolve threads where the last comment is from a human reviewer — that's their prerogative.
@@ -183,6 +184,8 @@ gh pr checks $PR --json name,state,bucket,link
 ### 4a. Structural findings — descope instead of building reactively
 
 **Why this exists:** a real case — a one-line TTL constant change — spiraled into 4 review rounds because round 1's finding ("this now conflicts with the published data-deletion promise") got patched inline instead of descoped. Each patch was narrow enough to leave the next race for the next round to find: a purge sweep, then a discovery-gap fix, then an authorization/TOCTOU fix, each correct-but-incomplete. The reviewer was right every round; the mistake was absorbing an unbounded fix into a PR that was supposed to be small.
+
+**Decide in the first round, not the third.** If the proper fix needs atomicity, fencing, reservation tokens, or changes fanned out across multiple call sites, file the issue and descope immediately instead of shipping a quick patch that opens the next gap.
 
 **Recognize it:** the finding names a conflict with something *outside* the PR's own diff — a doc, policy, contract, or invariant the PR didn't touch but now invalidates. Ask: can the gap be closed with a small, bounded change using an existing pattern (call an existing helper, adjust an existing constant)? If yes, it's a normal fix — do it inline.
 
@@ -218,6 +221,9 @@ Before staging becomes a commit, if you made ANY code change this cycle, re-read
 3. **Symmetry** — if a sibling/parallel code path exists (e.g. two providers implementing the same interface, check-in vs check-out, success vs failure branch of the same flow), does this fix now leave them inconsistent? A fix applied to one side of a symmetric pair and not the other is the single most common regression source.
 4. **Completeness, not just the reported line** — did the fix address the *class* of problem the reviewer described, or only the one instance they pointed at? Search for other instances of the same pattern in the same file/module before assuming the fix is done.
 5. **Reviewer's own methodology** — if the review body states which perspectives it checks (e.g. codepulse's correctness/security/resilience/standards passes), explicitly re-check the diff against those same perspectives yourself before pushing, not just the specific line flagged.
+
+6. **Failure modes** — for each changed path, walk through: what happens if it throws partway, races itself (concurrent runs, double invocation), half-fails (some steps applied, others not), or reads stale data? Then check which sibling paths need the same rule. These are exactly where reviewers keep finding problems.
+7. **Smallest change** — did the fix add new state (counter, claim, retry, stored field)? If so, is there an existing mechanism that would do? If not, is this really a step 4a case?
 
 If this review surfaces a new issue, fix it now, in the same cycle, before it ever reaches the reviewer — do not push and wait for it to come back as a new comment next cycle.
 
