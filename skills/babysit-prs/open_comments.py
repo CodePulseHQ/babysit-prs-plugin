@@ -49,6 +49,13 @@ It ALSO reports PR state in the same run (saves a separate `gh pr view` call):
   reviewDecision, state, mergeable, mergeStateStatus, baseRefName, and a derived
   `needsRebase` flag (true when mergeStateStatus is BEHIND/DIRTY or mergeable is
   CONFLICTING) so the per-cycle exit-condition checks come from one invocation.
+
+MERGE MODE (opt-in, `--merge`)
+  --list --merge   keeps approved PRs and PRs stacked on another of your open PRs,
+                   adds stackParent/stackDepth/stackRoot, sorts bottom-of-stack
+                   first, and reports the repo's allowedMergeMethods.
+  --pr N --merge   adds mergeReady / mergeBlockers (approved, CI green, no open
+                   threads, mergeState CLEAN, base == default branch).
 """
 import argparse
 import json
@@ -118,7 +125,7 @@ def list_babysittable_prs(repo, me):
     default_branch = detect_default_branch()
     prs = json.loads(gh([
         "pr", "list", "--repo", repo, "--author", me, "--state", "open",
-        "--json", "number,title,reviewDecision,baseRefName,url,isDraft",
+        "--json", "number,title,reviewDecision,baseRefName,headRefName,url,isDraft",
     ]))
     out = [
         p for p in prs
@@ -128,6 +135,98 @@ def list_babysittable_prs(repo, me):
     ]
     out.sort(key=lambda p: p["number"])
     return default_branch, out
+
+
+def annotate_stacks(prs, default_branch):
+    """Add stack info to each PR (mutates and returns `prs`).
+
+    A PR is "stacked" when its base branch is another open PR's head branch
+    instead of the default branch. Adds:
+      stackParent - number of the open PR it is stacked on (None if none)
+      stackDepth  - 0 for a PR targeting the default branch, 1 for a PR on
+                    top of that, and so on
+      stackRoot   - number of the bottom PR of its stack (itself when depth 0)
+    """
+    by_head = {p["headRefName"]: p for p in prs if p.get("headRefName")}
+
+    def parent_of(p):
+        if p.get("baseRefName") == default_branch:
+            return None
+        return by_head.get(p.get("baseRefName"))
+
+    for p in prs:
+        depth, root, seen = 0, p, {p["number"]}
+        while True:
+            parent = parent_of(root)
+            if parent is None or parent["number"] in seen:  # seen: cycle guard
+                break
+            seen.add(parent["number"])
+            depth, root = depth + 1, parent
+        direct = parent_of(p)
+        p["stackParent"] = direct["number"] if direct else None
+        p["stackDepth"] = depth
+        p["stackRoot"] = root["number"]
+    return prs
+
+
+def list_mergeable_candidates(repo, me):
+    """'all merge' mode PR discovery. Unlike list_babysittable_prs this KEEPS
+    approved PRs (they stay monitored until they merge) and keeps PRs stacked
+    on another open PR of yours. Sorted bottom-of-stack first (depth, then PR
+    number) so merging naturally goes in the only safe order."""
+    default_branch = detect_default_branch()
+    prs = json.loads(gh([
+        "pr", "list", "--repo", repo, "--author", me, "--state", "open",
+        "--json", "number,title,reviewDecision,baseRefName,headRefName,url,isDraft",
+    ]))
+    prs = [p for p in prs if not p.get("isDraft")]
+    annotate_stacks(prs, default_branch)
+    out = [
+        p for p in prs
+        if p["baseRefName"] == default_branch or p["stackParent"] is not None
+    ]
+    out.sort(key=lambda p: (p["stackDepth"], p["number"]))
+    return default_branch, out
+
+
+def allowed_merge_methods(repo):
+    """Merge methods the repo permits, as `gh pr merge` flag names."""
+    r = json.loads(gh([
+        "repo", "view", repo, "--json",
+        "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed",
+    ]))
+    return [m for m, key in (
+        ("merge", "mergeCommitAllowed"),
+        ("squash", "squashMergeAllowed"),
+        ("rebase", "rebaseMergeAllowed"),
+    ) if r.get(key)]
+
+
+def merge_blockers(state, open_threads, default_branch):
+    """Reasons this PR must NOT be merged right now (empty list = safe to merge).
+
+    Merging is opt-in, so this is deliberately strict: approved, CI green,
+    nothing unresolved, GitHub reports it CLEAN, and it targets the default
+    branch (which means any parent in a stack has already merged and GitHub
+    retargeted it - children never merge into a parent's branch)."""
+    blockers = []
+    if state.get("state") != "OPEN":
+        blockers.append(f"state={state.get('state')}")
+    if state.get("isDraft"):
+        blockers.append("draft")
+    if not state.get("approved"):
+        blockers.append(f"not-approved(review={state.get('reviewDecision')})")
+    if state.get("baseRefName") != default_branch:
+        blockers.append(f"base={state.get('baseRefName')}(stacked, parent not merged yet)")
+    if state.get("ciFailing"):
+        blockers.append(f"ci-failing({','.join(state['failingChecks'])})")
+    if state.get("pendingChecks"):
+        blockers.append(f"ci-pending({','.join(state['pendingChecks'])})")
+    if open_threads:
+        blockers.append(f"open-threads({open_threads})")
+    if state.get("mergeStateStatus") != "CLEAN":
+        blockers.append(f"mergeState={state.get('mergeStateStatus')}")
+    return blockers
 
 
 def fetch_pr_checks(repo, pr):
@@ -338,18 +437,38 @@ def main():
     ap.add_argument("--json", action="store_true", help="raw JSON output")
     ap.add_argument("--list", action="store_true",
                      help="'all' mode PR discovery instead of single-PR detail")
+    ap.add_argument("--merge", action="store_true",
+                     help="merge mode: with --list, keep approved + stacked PRs and report "
+                          "allowed merge methods; with --pr, report merge readiness")
     a = ap.parse_args()
 
     repo = a.repo or detect_repo()
     me = a.me or detect_me()
 
     if a.list:
-        default_branch, prs = list_babysittable_prs(repo, me)
+        if a.merge:
+            default_branch, prs = list_mergeable_candidates(repo, me)
+            methods = allowed_merge_methods(repo)
+        else:
+            default_branch, prs = list_babysittable_prs(repo, me)
+            methods = []
         if a.json:
-            print(json.dumps({
+            payload = {
                 "repo": repo, "me": me, "defaultBranch": default_branch,
                 "prs": prs,
-            }, indent=2))
+            }
+            if a.merge:
+                payload["allowedMergeMethods"] = methods
+            print(json.dumps(payload, indent=2))
+        elif a.merge:
+            print(f"repo={repo} me={me} defaultBranch={default_branch} "
+                  f"allowedMergeMethods={','.join(methods)}")
+            print(f"{len(prs)} open, non-draft PR(s) incl. approved + stacked "
+                  "(bottom of stack first):")
+            for p in prs:
+                stack = f" stacked-on=#{p['stackParent']}" if p["stackParent"] else ""
+                print(f"  #{p['number']} review={p.get('reviewDecision')} "
+                      f"depth={p['stackDepth']}{stack}  {p.get('title', '')}")
         else:
             print(f"repo={repo} me={me} defaultBranch={default_branch}")
             print(f"{len(prs)} open, non-draft, non-approved PR(s) targeting {default_branch} "
@@ -366,6 +485,7 @@ def main():
     state = fetch_pr_state(repo, a.pr)
     threads = [normalize_thread(n, me) for n in fetch_review_threads(owner, name, a.pr)]
     total = len(threads)
+    unresolved = sum(1 for t in threads if not t["isResolved"])
     if not a.all:
         threads = [t for t in threads if not t["isResolved"]]
     open_count = len(threads)
@@ -377,14 +497,20 @@ def main():
     issues = fetch_issue_comments(repo, a.pr, me)[: a.limit]
     reviews = fetch_reviews(owner, name, a.pr, me)[: a.limit]
 
+    blockers = merge_blockers(state, unresolved, detect_default_branch()) if a.merge else []
+
     if a.json:
-        print(json.dumps({
+        out = {
             "repo": repo, "pr": a.pr, "me": me,
             "prState": state,
             "totalThreads": total, "openThreads": open_count,
             "reviewThreads": threads, "issueComments": issues,
             "reviews": reviews,
-        }, indent=2))
+        }
+        if a.merge:
+            out["mergeReady"] = not blockers
+            out["mergeBlockers"] = blockers
+        print(json.dumps(out, indent=2))
         return
 
     print(f"repo={repo} pr={a.pr} me={me}")
@@ -400,6 +526,9 @@ def main():
     print(f"state: {state.get('state')} review={state.get('reviewDecision')} "
           f"mergeable={state.get('mergeable')} mergeState={state.get('mergeStateStatus')} "
           f"base={state.get('baseRefName')} [{rebase}] [{ci}]{approved}")
+    if a.merge:
+        print("merge: " + ("*** MERGE-READY ***" if not blockers
+                           else "NOT-READY " + "; ".join(blockers)))
     print(f"review threads: {open_count} open / {total} total "
           f"(showing {len(threads)} newest)")
     for t in threads:
