@@ -55,6 +55,20 @@ class TestSessionTitleHook(unittest.TestCase):
             "myrepo#ALL",
         )
 
+    def test_merge_word_after_all_keeps_title(self):
+        out = run_hook("/babysit-prs all merge", gh_repo_name="myrepo")
+        self.assertEqual(
+            json.loads(out)["hookSpecificOutput"]["sessionTitle"],
+            "myrepo#ALL",
+        )
+
+    def test_merge_word_after_pr_number_keeps_title(self):
+        out = run_hook("/babysit-prs 287 merge=squash", gh_repo_name="myrepo")
+        self.assertEqual(
+            json.loads(out)["hookSpecificOutput"]["sessionTitle"],
+            "myrepo#287",
+        )
+
     def test_no_argument_uses_current_pr(self):
         out = run_hook("/babysit-prs", gh_repo_name="myrepo", gh_pr_number="99")
         self.assertEqual(

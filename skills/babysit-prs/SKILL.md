@@ -13,6 +13,8 @@ Continuously monitor GitHub PRs for new review comments and CI failures. Automat
 - PR number (e.g. `287`): monitor that specific PR (targets any base branch — the base-branch restriction below only applies to `all` mode)
 - `all`: monitor all your open, non-draft, non-approved PRs that target the repo's main branch (main/master/develop — whatever `gh repo view` reports as the default branch), processed oldest PR number first. PRs targeting any other branch (e.g. a feature or staging branch) are skipped unless babysat explicitly by number. Drafts are skipped too — there's nothing to babysit on a PR that isn't ready for review yet — but babysitting one explicitly by number still works.
 
+- `merge` (optional extra word after the PR number or `all`, e.g. `all merge`): **opt-in merge mode.** Without it this skill never merges anything. See "Merge Mode" below — it changes the approved hard-stop, the `all` list, and how stacked PRs are handled. Optionally `merge=squash|merge|rebase` picks the merge method; otherwise use the repo's only allowed method, or `squash` if several are allowed and the user didn't say.
+
 ## Mode Detection
 
 ```bash
@@ -57,7 +59,7 @@ The standalone form, if you need it:
 gh pr view $PR --json reviewDecision,state,mergeable,mergeStateStatus
 ```
 
-**If approved → HARD STOP on this PR immediately.** Do not comment, push, or reply to it — make no further changes to an approved PR, ever. Remove it from the monitor list.
+**If approved and `merge` was NOT given → HARD STOP on this PR immediately.** (With `merge`, approved PRs follow "Merge Mode" below instead.) Do not comment, push, or reply to it — make no further changes to an approved PR, ever. Remove it from the monitor list.
 - **Single-PR mode** (no args, or an explicit PR number): this was the only PR being monitored, so exit the entire loop now — the job is done.
 - **Multi-PR mode (`all`)**: this PR is done, but the others are not. Continue the cycle with the remaining PRs; do not exit the loop just because one PR was approved. Only exit the loop once every monitored PR has hit an exit condition (see Exit Conditions Summary).
 
@@ -272,6 +274,31 @@ If the project has `.claude/pr-review-conventions.md` or similar PR review conve
 cat .claude/pr-review-conventions.md 2>/dev/null
 ```
 
+## Merge Mode (opt-in: `merge` argument)
+
+Only active when the user passed `merge`. Everything above still applies to unapproved PRs; this section changes what happens to approved PRs and stacks.
+
+**Discovery.** In `all merge` mode use `python3 "$SKILL_DIR/open_comments.py" --list --merge --json` instead of plain `--list`. It keeps **approved** PRs and PRs **stacked** on another of your open PRs (base = another PR's head branch), adds `stackParent`/`stackDepth`/`stackRoot` per PR, reports `allowedMergeMethods`, and sorts bottom-of-stack first. Process in that order. For a single PR (`287 merge`) just add `--merge` to the per-PR call.
+
+**Per-PR check.** `open_comments.py --pr $PR --merge` adds a `merge:` banner line (`*** MERGE-READY ***` or `NOT-READY <reasons>`) and `mergeReady`/`mergeBlockers` in `--json`. Merge-ready means ALL of: approved, CI green with nothing pending, zero unresolved threads, `mergeStateStatus` is `CLEAN`, and the PR targets the default branch. Don't reimplement these checks by hand.
+
+**Approved PRs (replaces the hard stop).** Still make **no code changes** to an approved PR (no commits, no pushes, no rebase, no new comments about code). The only things you may do:
+1. If `mergeReady` → merge it: `gh pr merge $PR --repo <repo> --<method>` (no `--admin`, never bypass branch protection). If GitHub refuses because required checks are still pending/queued, retry with `--auto`; if it still refuses, report why and move on. Report the PR number, method, and resulting state.
+2. If it's `BEHIND` (and not conflicting) → bring it up to date **without losing the approval** via the API, never a local rebase/force-push:
+   ```bash
+   gh api -X PUT repos/<owner>/<repo>/pulls/$PR/update-branch
+   ```
+   Then wait for next cycle (CI reruns).
+3. Anything else (CI pending, conflicts, unresolved threads, base not default) → do nothing and let the next cycle re-check. If it has conflicts you can't resolve via update-branch, leave one comment saying so and skip.
+Never merge a draft or a PR whose latest decision is `CHANGES_REQUESTED`; `mergeBlockers` already covers this.
+
+**Stacks.**
+- **Merge bottom-up only.** A PR with `stackParent` is never merged while its parent is open — its base isn't the default branch, so `mergeBlockers` will say so. Once the parent merges, GitHub retargets the child to the default branch; the child then needs to be merge-ready on its own (it keeps its approval unless you disturb it).
+- **Be careful rebasing anywhere in a stack.** A rebase + force-push on any PR rewrites commits and can dismiss approvals, and force-pushing a parent can orphan its children. For any PR that is approved, has an approved ancestor/descendant, or has `stackParent`/children, prefer `update-branch` over local rebase. Only use the local rebase flow (step 1) for an unapproved PR with no approved relatives in its stack.
+- **Cross-stack awareness.** When a parent merges, re-fetch the list: children's `baseRefName`, `needsRebase`, and merge state change. A child that is `BEHIND`/`DIRTY` after its parent's squash-merge usually needs `update-branch` (or a rebase if unapproved) before it can merge.
+
+**Loop exit in merge mode.** An approved PR is *not* done until it is merged (or closed). Exit the loop only when `--list --merge --json` returns an empty list. PRs that are approved-but-blocked stay monitored.
+
 ## Multi-PR Mode Specifics
 
 When running with `all`:
@@ -291,7 +318,7 @@ git checkout $ORIGINAL_BRANCH
 ## Exit Conditions Summary
 
 Stop monitoring a PR when:
-1. **Approved** — any reviewer approves. **Hard stop on this PR immediately: make no further changes to it** — no comment, no push, no reply. Remove it from the monitor list. In single-PR mode this ends the loop (nothing left to monitor); in multi-PR (`all`) mode, keep processing the other monitored PRs this cycle and every cycle after — an approval on one PR never halts work on the rest.
+1. **Approved** (without `merge` — in merge mode an approved PR is only done once merged, see Merge Mode) — any reviewer approves. **Hard stop on this PR immediately: make no further changes to it** — no comment, no push, no reply. Remove it from the monitor list. In single-PR mode this ends the loop (nothing left to monitor); in multi-PR (`all`) mode, keep processing the other monitored PRs this cycle and every cycle after — an approval on one PR never halts work on the rest.
 2. **Looping** — same threads re-discussed 2+ times with no new concerns. Leave a summary comment, then stop monitoring this PR.
 3. **Merged/Closed** — PR is no longer open. Remove from monitor list.
 4. **Unresolvable conflicts** — PR has merge conflicts that can't be auto-resolved. Leave a comment, skip for this cycle (but keep monitoring for when conflicts are resolved externally).
@@ -314,4 +341,7 @@ Stop the entire loop only when every monitored PR has hit exit condition 1, 2, o
 
 # Monitor all your open non-approved PRs every 10 minutes
 /loop 10m /babysit-prs all
+
+# Same, but also merge PRs as they get approved (stack-aware, bottom-up)
+/loop 5m /babysit-prs all merge
 ```

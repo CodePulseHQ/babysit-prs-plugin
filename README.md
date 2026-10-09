@@ -61,7 +61,13 @@ claude plugin marketplace remove babysit-prs-plugin
 
 # Monitor all your open, non-approved PRs every 10 minutes
 /loop 10m /babysit-prs all
+
+# Opt in to merging: approved PRs are merged once CI is green, with no open
+# threads, and only bottom-up through stacked PRs
+/loop 5m /babysit-prs all merge
 ```
+
+**Merge mode is off by default.** Without `merge`, babysit-prs never merges anything and stops touching a PR the moment it's approved. With `merge` (optionally `merge=squash|merge|rebase`), it keeps tracking approved PRs until they merge, understands stacked PRs (a PR whose base is another PR's branch) and only merges bottom-up, and brings approved PRs up to date via the `update-branch` API instead of rebasing so approvals aren't lost.
 
 See `skills/babysit-prs/SKILL.md` for the full behavior.
 
